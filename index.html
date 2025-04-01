@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Transition Generator</title>
+    <style>
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .upload-section {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .preview {
+            width: 300px;
+            height: 200px;
+            border: 2px dashed #ccc;
+            margin: 10px;
+            background-size: cover;
+        }
+
+        #generateBtn {
+            padding: 12px 24px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 20px;
+        }
+
+        #generateBtn:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        #status {
+            color: #666;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Photo Transition Generator</h2>
+        <div class="upload-section">
+            <div>
+                <input type="file" id="photo1" accept="image/*">
+                <div class="preview" id="preview1"></div>
+            </div>
+            <div>
+                <input type="file" id="photo2" accept="image/*">
+                <div class="preview" id="preview2"></div>
+            </div>
+        </div>
+        <button id="generateBtn" disabled>Generate & Download Video</button>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        const photo1Input = document.getElementById('photo1');
+        const photo2Input = document.getElementById('photo2');
+        const preview1 = document.getElementById('preview1');
+        const preview2 = document.getElementById('preview2');
+        const generateBtn = document.getElementById('generateBtn');
+        const status = document.getElementById('status');
+
+        let images = [];
+
+        async function handleImageUpload(file, previewElement) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    previewElement.style.backgroundImage = `url(${e.target.result})`;
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => resolve(img);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function handleUploads() {
+            if (photo1Input.files[0] && photo2Input.files[0]) {
+                status.textContent = 'Processing images...';
+                images = [
+                    await handleImageUpload(photo1Input.files[0], preview1),
+                    await handleImageUpload(photo2Input.files[0], preview2)
+                ];
+                generateBtn.disabled = false;
+                status.textContent = 'Ready to generate video!';
+            }
+        }
+
+        async function generateVideo() {
+            try {
+                generateBtn.disabled = true;
+                status.textContent = 'Generating video... (this may take 20 seconds)';
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = 800;
+                canvas.height = 600;
+                const ctx = canvas.getContext('2d');
+                
+                const stream = canvas.captureStream(25);
+                const recorder = new MediaRecorder(stream, {
+                    mimeType: 'video/webm;codecs=vp9'
+                });
+                
+                const chunks = [];
+                const duration = 20000; // 20 seconds
+                let startTime = Date.now();
+
+                recorder.ondataavailable = (e) => chunks.push(e.data);
+                recorder.start();
+
+                function drawFrame() {
+                    const progress = (Date.now() - startTime) / duration;
+                    
+                    // Clear canvas
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    
+                    // Draw first image
+                    ctx.globalAlpha = 1 - progress;
+                    ctx.drawImage(images[0], 0, 0, canvas.width, canvas.height);
+                    
+                    // Draw second image
+                    ctx.globalAlpha = progress;
+                    ctx.drawImage(images[1], 0, 0, canvas.width, canvas.height);
+                    
+                    // Draw white line
+                    ctx.globalAlpha = 1;
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, progress * canvas.height, canvas.width, 4);
+
+                    if (progress < 1) {
+                        requestAnimationFrame(drawFrame);
+                    }
+                }
+
+                drawFrame();
+
+                setTimeout(() => {
+                    recorder.stop();
+                }, duration);
+
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'transition.webm';
+                    a.click();
+                    
+                    status.textContent = 'Video downloaded!';
+                    generateBtn.disabled = false;
+                };
+
+            } catch (error) {
+                status.textContent = `Error: ${error.message}`;
+                generateBtn.disabled = false;
+            }
+        }
+
+        photo1Input.addEventListener('change', handleUploads);
+        photo2Input.addEventListener('change', handleUploads);
+        generateBtn.addEventListener('click', generateVideo);
+    </script>
+</body>
+</html>
